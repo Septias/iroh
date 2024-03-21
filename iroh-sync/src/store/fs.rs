@@ -448,17 +448,16 @@ impl crate::ranger::Store<SignedEntry> for StoreInstance {
 
     fn len(&self) -> Result<usize> {
         let read_tx = self.store.db.begin_read()?;
-        let record_table = read_tx.open_table(RECORDS_TABLE)?;
-
+        let tables = ReadOnlyTables::new(&read_tx)?;
         let bounds = RecordsBounds::namespace(self.namespace);
-        let records = record_table.range(bounds.as_ref())?;
+        let records = tables.records.range(bounds.as_ref())?;
         Ok(records.count())
     }
 
     fn is_empty(&self) -> Result<bool> {
         let read_tx = self.store.db.begin_read()?;
-        let record_table = read_tx.open_table(RECORDS_TABLE)?;
-        Ok(record_table.is_empty()?)
+        let tables = ReadOnlyTables::new(&read_tx)?;
+        Ok(tables.records.is_empty()?)
     }
 
     fn get_fingerprint(&self, range: &Range<RecordIdentifier>) -> Result<Fingerprint> {
@@ -479,7 +478,7 @@ impl crate::ranger::Store<SignedEntry> for StoreInstance {
         let write_tx = self.store.db.begin_write()?;
         {
             // insert into record table
-            let mut record_table = write_tx.open_table(RECORDS_TABLE)?;
+            let mut tables = Tables::new(&write_tx)?;
             let key = (
                 &id.namespace().to_bytes(),
                 &id.author().to_bytes(),
@@ -493,22 +492,20 @@ impl crate::ranger::Store<SignedEntry> for StoreInstance {
                 e.content_len(),
                 hash.as_bytes(),
             );
-            record_table.insert(key, value)?;
+            tables.records.insert(key, value)?;
 
             // insert into by key index table
-            let mut idx_by_key = write_tx.open_table(RECORDS_BY_KEY_TABLE)?;
             let key = (
                 &id.namespace().to_bytes(),
                 id.key(),
                 &id.author().to_bytes(),
             );
-            idx_by_key.insert(key, ())?;
+            tables.records_by_key.insert(key, ())?;
 
             // insert into latest table
-            let mut latest_table = write_tx.open_table(LATEST_PER_AUTHOR_TABLE)?;
             let key = (&e.id().namespace().to_bytes(), &e.id().author().to_bytes());
             let value = (e.timestamp(), e.id().key());
-            latest_table.insert(key, value)?;
+            tables.latest_per_author.insert(key, value)?;
         }
         write_tx.commit()?;
         Ok(())
