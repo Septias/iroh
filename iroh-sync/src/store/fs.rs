@@ -270,7 +270,7 @@ impl super::Store for Store {
                     // the table is empty so the peer can be inserted without further checks since
                     // super::PEERS_PER_DOC_CACHE_SIZE is non zero
                     drop(namespace_peers);
-                    peers_table.insert(namespace, (nanos, peer))?;
+                    tables.namespace_peers.insert(namespace, (nanos, peer))?;
                 }
                 Some((oldest_nanos, oldest_peer)) => {
                     let oldest_peer = &oldest_peer;
@@ -279,8 +279,10 @@ impl super::Store for Store {
                         // oldest peer is the current one, so replacing the entry for the peer will
                         // maintain the size
                         drop(namespace_peers);
-                        peers_table.remove(namespace, (oldest_nanos, oldest_peer))?;
-                        peers_table.insert(namespace, (nanos, peer))?;
+                        tables
+                            .namespace_peers
+                            .remove(namespace, (oldest_nanos, oldest_peer))?;
+                        tables.namespace_peers.insert(namespace, (nanos, peer))?;
                     } else {
                         // calculate the len in the same loop since calling `len` is another fallible operation
                         let mut len = 1;
@@ -300,16 +302,20 @@ impl super::Store for Store {
                             Some(prev_nanos) => {
                                 // the peer was already present, so we can remove the old entry and
                                 // insert the new one without checking the size
-                                peers_table.remove(namespace, (prev_nanos, peer))?;
-                                peers_table.insert(namespace, (nanos, peer))?;
+                                tables
+                                    .namespace_peers
+                                    .remove(namespace, (prev_nanos, peer))?;
+                                tables.namespace_peers.insert(namespace, (nanos, peer))?;
                             }
                             None => {
                                 // the peer is new and the table is non empty, add it and check the
                                 // size to decide if the oldest peer should be evicted
-                                peers_table.insert(namespace, (nanos, peer))?;
+                                tables.namespace_peers.insert(namespace, (nanos, peer))?;
                                 len += 1;
                                 if len > super::PEERS_PER_DOC_CACHE_SIZE.get() {
-                                    peers_table.remove(namespace, (oldest_nanos, oldest_peer))?;
+                                    tables
+                                        .namespace_peers
+                                        .remove(namespace, (oldest_nanos, oldest_peer))?;
                                 }
                             }
                         }
