@@ -550,13 +550,10 @@ impl crate::ranger::Store<SignedEntry> for StoreInstance {
     fn remove(&mut self, id: &RecordIdentifier) -> Result<Option<SignedEntry>> {
         let write_tx = self.store.db.begin_write()?;
         let (namespace, author, key) = id.as_byte_tuple();
-        {
+        let entry = {
             let mut tables = Tables::new(&write_tx)?;
             let id = (namespace, key, author);
             tables.records_by_key.remove(id)?;
-        }
-        let entry = {
-            let mut tables = Tables::new(&write_tx)?;
             let id = (namespace, author, key);
             let value = tables.records.remove(id)?;
             value.map(|value| into_entry(id, value.value()))
