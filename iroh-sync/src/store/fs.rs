@@ -551,14 +551,14 @@ impl crate::ranger::Store<SignedEntry> for StoreInstance {
         let write_tx = self.store.db.begin_write()?;
         let (namespace, author, key) = id.as_byte_tuple();
         {
-            let mut table = write_tx.open_table(RECORDS_BY_KEY_TABLE)?;
+            let mut tables = Tables::new(&write_tx)?;
             let id = (namespace, key, author);
-            table.remove(id)?;
+            tables.records_by_key.remove(id)?;
         }
         let entry = {
-            let mut table = write_tx.open_table(RECORDS_TABLE)?;
+            let mut tables = Tables::new(&write_tx)?;
             let id = (namespace, author, key);
-            let value = table.remove(id)?;
+            let value = tables.records.remove(id)?;
             value.map(|value| into_entry(id, value.value()))
         };
         write_tx.commit()?;
@@ -594,14 +594,14 @@ impl crate::ranger::Store<SignedEntry> for StoreInstance {
         let bounds = RecordsBounds::author_prefix(id.namespace(), id.author(), id.key_bytes());
         let write_tx = self.store.db.begin_write()?;
         let count = {
-            let mut table = write_tx.open_table(RECORDS_TABLE)?;
+            let mut tables = Tables::new(&write_tx)?;
             let cb = |_k: RecordsId, v: RecordsValue| {
                 let (timestamp, _namespace_sig, _author_sig, len, hash) = v;
                 let record = Record::new(hash.into(), len, timestamp);
 
                 predicate(&record)
             };
-            let iter = table.drain_filter(bounds.as_ref(), cb)?;
+            let iter = tables.records.drain_filter(bounds.as_ref(), cb)?;
             iter.count()
         };
         write_tx.commit()?;
