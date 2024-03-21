@@ -71,16 +71,17 @@ pub const DOWNLOAD_POLICY_TABLE: TableDefinition<&[u8; 32], &[u8]> =
     TableDefinition::new("download-policy-1");
 
 trait ReadableTables<'db> {
-    fn records(&self) -> impl ReadableTable<RecordsId<'static>, RecordsValue<'static>>;
-    fn namespaces(&self) -> impl ReadableTable<&'static [u8; 32], (u8, &'static [u8; 32])>;
+    fn records(&self) -> &impl ReadableTable<RecordsId<'static>, RecordsValue<'static>>;
+    fn records_by_key(&self) -> &impl ReadableTable<RecordsByKeyId<'static>, ()>;
+    fn namespaces(&self) -> &impl ReadableTable<&'static [u8; 32], (u8, &'static [u8; 32])>;
     fn latest_per_author(
         &self,
-    ) -> impl ReadableTable<LatestPerAuthorKey<'static>, LatestPerAuthorValue<'static>>;
+    ) -> &impl ReadableTable<LatestPerAuthorKey<'static>, LatestPerAuthorValue<'static>>;
     fn namespace_peers(
         &self,
-    ) -> impl ReadableMultimapTable<&'static [u8; 32], (Nanos, &'static PeerIdBytes)>;
-    fn download_policy(&self) -> impl ReadableTable<&'static [u8; 32], &'static [u8]>;
-    fn authors(&self) -> impl ReadableTable<&'static [u8; 32], &'static [u8; 32]>;
+    ) -> &impl ReadableMultimapTable<&'static [u8; 32], (Nanos, &'static PeerIdBytes)>;
+    fn download_policy(&self) -> &impl ReadableTable<&'static [u8; 32], &'static [u8]>;
+    fn authors(&self) -> &impl ReadableTable<&'static [u8; 32], &'static [u8; 32]>;
 }
 
 pub struct Tables<'db, 'tx> {
@@ -115,6 +116,40 @@ impl<'db, 'tx> Tables<'db, 'tx> {
     }
 }
 
+impl<'db, 'tx> ReadableTables<'db> for Tables<'db, 'tx> {
+    fn records(&self) -> &impl ReadableTable<RecordsId<'static>, RecordsValue<'static>> {
+        &self.records
+    }
+
+    fn records_by_key(&self) -> &impl ReadableTable<RecordsByKeyId<'static>, ()> {
+        &self.records_by_key
+    }
+
+    fn namespaces(&self) -> &impl ReadableTable<&'static [u8; 32], (u8, &'static [u8; 32])> {
+        &self.namespaces
+    }
+
+    fn latest_per_author(
+        &self,
+    ) -> &impl ReadableTable<LatestPerAuthorKey<'static>, LatestPerAuthorValue<'static>> {
+        &self.latest_per_author
+    }
+
+    fn namespace_peers(
+        &self,
+    ) -> &impl ReadableMultimapTable<&'static [u8; 32], (Nanos, &'static PeerIdBytes)> {
+        &self.namespace_peers
+    }
+
+    fn download_policy(&self) -> &impl ReadableTable<&'static [u8; 32], &'static [u8]> {
+        &self.download_policy
+    }
+
+    fn authors(&self) -> &impl ReadableTable<&'static [u8; 32], &'static [u8; 32]> {
+        &self.authors
+    }
+}
+
 pub struct ReadOnlyTables<'db> {
     pub records: ReadOnlyTable<'db, RecordsId<'static>, RecordsValue<'static>>,
     pub records_by_key: ReadOnlyTable<'db, RecordsByKeyId<'static>, ()>,
@@ -145,5 +180,39 @@ impl<'db> ReadOnlyTables<'db> {
             download_policy,
             authors,
         })
+    }
+}
+
+impl<'db> ReadableTables<'db> for ReadOnlyTables<'db> {
+    fn records(&self) -> &impl ReadableTable<RecordsId<'static>, RecordsValue<'static>> {
+        &self.records
+    }
+
+    fn records_by_key(&self) -> &impl ReadableTable<RecordsByKeyId<'static>, ()> {
+        &self.records_by_key
+    }
+
+    fn namespaces(&self) -> &impl ReadableTable<&'static [u8; 32], (u8, &'static [u8; 32])> {
+        &self.namespaces
+    }
+
+    fn latest_per_author(
+        &self,
+    ) -> &impl ReadableTable<LatestPerAuthorKey<'static>, LatestPerAuthorValue<'static>> {
+        &self.latest_per_author
+    }
+
+    fn namespace_peers(
+        &self,
+    ) -> &impl ReadableMultimapTable<&'static [u8; 32], (Nanos, &'static PeerIdBytes)> {
+        &self.namespace_peers
+    }
+
+    fn download_policy(&self) -> &impl ReadableTable<&'static [u8; 32], &'static [u8]> {
+        &self.download_policy
+    }
+
+    fn authors(&self) -> &impl ReadableTable<&'static [u8; 32], &'static [u8; 32]> {
+        &self.authors
     }
 }

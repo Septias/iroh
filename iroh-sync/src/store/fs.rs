@@ -198,12 +198,9 @@ impl super::Store for Store {
         }
         let write_tx = self.db.begin_write()?;
         {
-            let mut table = write_tx.open_table(RECORDS_BY_KEY_TABLE)?;
-            let bounds = ByKeyBounds::namespace(*namespace);
-            let _ = table.drain(bounds.as_ref());
-        }
-        {
             let mut tables = Tables::new(&write_tx)?;
+            let bounds = ByKeyBounds::namespace(*namespace);
+            let _ = tables.records_by_key.drain(bounds.as_ref());
             let bounds = RecordsBounds::namespace(*namespace);
             tables.records.drain(bounds.as_ref())?;
             tables.namespaces.remove(namespace.as_bytes())?;
@@ -330,9 +327,9 @@ impl super::Store for Store {
 
     fn get_sync_peers(&self, namespace: &NamespaceId) -> Result<Option<Self::PeersIter<'_>>> {
         let read_tx = self.db.begin_read()?;
-        let peers_table = read_tx.open_multimap_table(NAMESPACE_PEERS_TABLE)?;
+        let tables = ReadOnlyTables::new(&read_tx)?;
         let mut peers = Vec::with_capacity(super::PEERS_PER_DOC_CACHE_SIZE.get());
-        for result in peers_table.get(namespace.as_bytes())?.rev() {
+        for result in tables.namespace_peers.get(namespace.as_bytes())?.rev() {
             let (_nanos, &peer) = result?.value();
             peers.push(peer);
         }
@@ -346,18 +343,17 @@ impl super::Store for Store {
     fn set_download_policy(&self, namespace: &NamespaceId, policy: DownloadPolicy) -> Result<()> {
         let tx = self.db.begin_write()?;
         {
+            let mut tables = Tables::new(&tx)?;
             let namespace = namespace.as_bytes();
 
             // ensure the document exists
-            let namespaces = tx.open_table(NAMESPACES_TABLE)?;
             anyhow::ensure!(
-                namespaces.get(&namespace)?.is_some(),
+                tables.namespaces.get(&namespace)?.is_some(),
                 "document not created"
             );
 
-            let mut table = tx.open_table(DOWNLOAD_POLICY_TABLE)?;
             let value = postcard::to_stdvec(&policy)?;
-            table.insert(namespace, value.as_slice())?;
+            tables.download_policy.insert(namespace, value.as_slice())?;
         }
         tx.commit()?;
         Ok(())
@@ -365,8 +361,8 @@ impl super::Store for Store {
 
     fn get_download_policy(&self, namespace: &NamespaceId) -> Result<DownloadPolicy> {
         let tx = self.db.begin_read()?;
-        let table = tx.open_table(DOWNLOAD_POLICY_TABLE)?;
-        let value = table.get(namespace.as_bytes())?;
+        let tables = ReadOnlyTables::new(&tx)?;
+        let value = tables.download_policy.get(namespace.as_bytes())?;
         Ok(match value {
             None => DownloadPolicy::default(),
             Some(value) => postcard::from_bytes(value.value())?,
@@ -895,8 +891,8 @@ mod tests {
         // check that the new table is there, even if empty
         {
             let read_tx = store.db.begin_read()?;
-            let record_by_key_table = read_tx.open_table(RECORDS_BY_KEY_TABLE)?;
-            assert_eq!(record_by_key_table.len()?, 0);
+            let tables = ReadOnlyTables::new(&read_tx)?;
+            assert_eq!(tables.records_by_key.len()?, 0);
         }
 
         // TODO: write test checking that the indexing is done correctly
