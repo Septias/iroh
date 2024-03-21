@@ -62,14 +62,8 @@ impl Store {
 
         // Setup all tables
         let write_tx = db.begin_write()?;
-        {
-            let _table = write_tx.open_table(RECORDS_TABLE)?;
-            let _table = write_tx.open_table(NAMESPACES_TABLE)?;
-            let _table = write_tx.open_table(LATEST_PER_AUTHOR_TABLE)?;
-            let _table = write_tx.open_multimap_table(NAMESPACE_PEERS_TABLE)?;
-            let _table = write_tx.open_table(DOWNLOAD_POLICY_TABLE)?;
-            let _table = write_tx.open_table(AUTHORS_TABLE)?;
-        }
+        let tables = Tables::new(&write_tx)?;
+        drop(tables);
         write_tx.commit()?;
 
         // Run database migrations
@@ -100,14 +94,9 @@ impl super::Store for Store {
             return Err(OpenError::AlreadyOpen);
         }
 
-        let read_tx = self.db.begin_read().map_err(anyhow::Error::from)?;
-        let namespace_table = read_tx
-            .open_table(NAMESPACES_TABLE)
-            .map_err(anyhow::Error::from)?;
-        let Some(db_value) = namespace_table
-            .get(namespace_id.as_bytes())
-            .map_err(anyhow::Error::from)?
-        else {
+        let read_tx = self.db.begin_read()?;
+        let tables = ReadOnlyTables::new(&read_tx)?;
+        let Some(db_value) = tables.namespaces.get(namespace_id.as_bytes())? else {
             return Err(OpenError::NotFound);
         };
         let (raw_kind, raw_bytes) = db_value.value();
@@ -125,8 +114,9 @@ impl super::Store for Store {
     fn list_namespaces(&self) -> Result<Self::NamespaceIter<'_>> {
         // TODO: avoid collect
         let read_tx = self.db.begin_read()?;
-        let namespace_table = read_tx.open_table(NAMESPACES_TABLE)?;
-        let namespaces: Vec<_> = namespace_table
+        let tables = ReadOnlyTables::new(&read_tx)?;
+        let namespaces: Vec<_> = tables
+            .namespaces
             .iter()?
             .map(|res| {
                 let capability = parse_capability(res?.1.value())?;
@@ -138,8 +128,8 @@ impl super::Store for Store {
 
     fn get_author(&self, author_id: &AuthorId) -> Result<Option<Author>> {
         let read_tx = self.db.begin_read()?;
-        let author_table = read_tx.open_table(AUTHORS_TABLE)?;
-        let Some(author) = author_table.get(author_id.as_bytes())? else {
+        let tables = ReadOnlyTables::new(&read_tx)?;
+        let Some(author) = tables.authors.get(author_id.as_bytes())? else {
             return Ok(None);
         };
 
@@ -150,8 +140,10 @@ impl super::Store for Store {
     fn import_author(&self, author: Author) -> Result<()> {
         let write_tx = self.db.begin_write()?;
         {
-            let mut author_table = write_tx.open_table(AUTHORS_TABLE)?;
-            author_table.insert(author.id().as_bytes(), &author.to_bytes())?;
+            let mut tables = Tables::new(&write_tx)?;
+            tables
+                .authors
+                .insert(author.id().as_bytes(), &author.to_bytes())?;
         }
         write_tx.commit()?;
         Ok(())
@@ -160,8 +152,9 @@ impl super::Store for Store {
     fn list_authors(&self) -> Result<Self::AuthorsIter<'_>> {
         // TODO: avoid collect
         let read_tx = self.db.begin_read()?;
-        let authors_table = read_tx.open_table(AUTHORS_TABLE)?;
-        let authors: Vec<_> = authors_table
+        let tables = ReadOnlyTables::new(&read_tx)?;
+        let authors: Vec<_> = tables
+            .authors
             .iter()?
             .map(|res| match res {
                 Ok((_key, value)) => Ok(Author::from_bytes(value.value())),
