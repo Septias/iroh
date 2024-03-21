@@ -168,9 +168,9 @@ impl super::Store for Store {
     fn import_namespace(&self, capability: Capability) -> Result<ImportNamespaceOutcome> {
         let write_tx = self.db.begin_write()?;
         let outcome = {
-            let mut namespace_table = write_tx.open_table(NAMESPACES_TABLE)?;
+            let mut tables = Tables::new(&write_tx)?;
             let (capability, outcome) = {
-                let existing = namespace_table.get(capability.id().as_bytes())?;
+                let existing = tables.namespaces.get(capability.id().as_bytes())?;
                 if let Some(existing) = existing {
                     let mut existing = parse_capability(existing.value())?;
                     let outcome = if existing.merge(capability)? {
@@ -185,7 +185,7 @@ impl super::Store for Store {
             };
             let id = capability.id().to_bytes();
             let (kind, bytes) = capability.raw();
-            namespace_table.insert(&id, (kind, &bytes))?;
+            tables.namespaces.insert(&id, (kind, &bytes))?;
             outcome
         };
         write_tx.commit()?;
@@ -237,8 +237,8 @@ impl super::Store for Store {
         include_empty: bool,
     ) -> Result<Option<SignedEntry>> {
         let read_tx = self.db.begin_read()?;
-        let record_table = read_tx.open_table(RECORDS_TABLE)?;
-        get_exact(&record_table, namespace, author, key, include_empty)
+        let tables = ReadOnlyTables::new(&read_tx)?;
+        get_exact(&tables.records, namespace, author, key, include_empty)
     }
 
     fn content_hashes(&self) -> Result<Self::ContentHashesIter<'_>> {
@@ -425,11 +425,11 @@ impl crate::ranger::Store<SignedEntry> for StoreInstance {
     /// Get a the first key (or the default if none is available).
     fn get_first(&self) -> Result<RecordIdentifier> {
         let read_tx = self.store.db.begin_read()?;
-        let record_table = read_tx.open_table(RECORDS_TABLE)?;
+        let tables = ReadOnlyTables::new(&read_tx)?;
 
         // TODO: verify this fetches all keys with this namespace
         let bounds = RecordsBounds::namespace(self.namespace);
-        let mut records = record_table.range(bounds.as_ref())?;
+        let mut records = tables.records.range(bounds.as_ref())?;
 
         let Some(record) = records.next() else {
             return Ok(RecordIdentifier::default());
