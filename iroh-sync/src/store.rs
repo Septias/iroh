@@ -38,9 +38,30 @@ pub enum OpenError {
     /// The replica does not exist.
     #[error("Replica not found")]
     NotFound,
+    /// Redb error while opening the replica.
+    #[error("{0}")]
+    Redb(#[from] redb::Error),
     /// Other error while opening the replica.
     #[error("{0}")]
     Other(#[from] anyhow::Error),
+}
+
+impl From<redb::TableError> for OpenError {
+    fn from(e: redb::TableError) -> Self {
+        OpenError::Other(e.into())
+    }
+}
+
+impl From<redb::TransactionError> for OpenError {
+    fn from(e: redb::TransactionError) -> Self {
+        OpenError::Other(e.into())
+    }
+}
+
+impl From<redb::StorageError> for OpenError {
+    fn from(e: redb::StorageError) -> Self {
+        OpenError::Other(e.into())
+    }
 }
 
 /// Abstraction over the different available storage solutions.
