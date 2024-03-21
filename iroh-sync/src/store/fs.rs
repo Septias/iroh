@@ -198,24 +198,17 @@ impl super::Store for Store {
         }
         let write_tx = self.db.begin_write()?;
         {
-            let mut record_table = write_tx.open_table(RECORDS_TABLE)?;
-            let bounds = RecordsBounds::namespace(*namespace);
-            record_table.drain(bounds.as_ref())?;
-        }
-        {
             let mut table = write_tx.open_table(RECORDS_BY_KEY_TABLE)?;
             let bounds = ByKeyBounds::namespace(*namespace);
             let _ = table.drain(bounds.as_ref());
         }
         {
-            let mut namespace_table = write_tx.open_table(NAMESPACES_TABLE)?;
-            namespace_table.remove(namespace.as_bytes())?;
-        }
-        {
-            let mut peers_table = write_tx.open_multimap_table(NAMESPACE_PEERS_TABLE)?;
-            peers_table.remove_all(namespace.as_bytes())?;
-            let mut dl_policies_table = write_tx.open_table(DOWNLOAD_POLICY_TABLE)?;
-            dl_policies_table.remove(namespace.as_bytes())?;
+            let mut tables = Tables::new(&write_tx)?;
+            let bounds = RecordsBounds::namespace(*namespace);
+            tables.records.drain(bounds.as_ref())?;
+            tables.namespaces.remove(namespace.as_bytes())?;
+            tables.namespace_peers.remove_all(namespace.as_bytes())?;
+            tables.download_policy.remove(namespace.as_bytes())?;
         }
         write_tx.commit()?;
         Ok(())
@@ -258,12 +251,14 @@ impl super::Store for Store {
             .map(|duration| duration.as_nanos() as u64)?;
         let write_tx = self.db.begin_write()?;
         {
+            let mut tables = Tables::new(&write_tx)?;
             // ensure the document exists
-            let namespaces = write_tx.open_table(NAMESPACES_TABLE)?;
-            anyhow::ensure!(namespaces.get(namespace)?.is_some(), "document not created");
+            anyhow::ensure!(
+                tables.namespaces.get(namespace)?.is_some(),
+                "document not created"
+            );
 
-            let mut peers_table = write_tx.open_multimap_table(NAMESPACE_PEERS_TABLE)?;
-            let mut namespace_peers = peers_table.get(namespace)?;
+            let mut namespace_peers = tables.namespace_peers.get(namespace)?;
 
             // get the oldest entry since it's candidate for removal
             let maybe_oldest = namespace_peers.next().transpose()?.map(|guard| {
